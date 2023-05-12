@@ -1,0 +1,17 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const axios_1 = __importDefault(require("axios"));
+async function default_1() {
+    try {
+        const response = await axios_1.default.get(`${process.env.DOCKER_REGISTRY_TAGS_VERSION_URL}`);
+        console.log(response.data.results.map((s) => s.name).join("\n"));
+    }
+    catch (error) {
+        console.log(error);
+    }
+}
+exports.default = default_1;
+//# sourceMappingURL=versions.js.map

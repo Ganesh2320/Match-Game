@@ -1,0 +1,243 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const path_1 = __importDefault(require("path"));
+const fs_1 = __importDefault(require("fs"));
+const simple_git_1 = __importDefault(require("simple-git"));
+const glob_1 = __importDefault(require("glob"));
+const axios_1 = __importDefault(require("axios"));
+const docker_compose_1 = __importDefault(require("docker-compose"));
+const replace_in_file_1 = require("replace-in-file");
+const utils_1 = require("../utils");
+const prepareContainers_1 = __importDefault(require("../utils/prepareContainers"));
+/*
+ * function to init GS Project
+ * This function has below main steps:
+ *   - Clone gs_project_template GIT repo into projectName
+ *   - Create docker-compose.yml file after getting information from user by prompt (mongodb, postgresdb, elasticsearch, kafka, redis)
+ */
+async function default_1(projectName, options, composeOptions) {
+    const projectDir = path_1.default.resolve(process.cwd(), projectName);
+    const devcontainerDir = path_1.default.resolve(projectDir, ".devcontainer");
+    composeOptions.cwd = devcontainerDir;
+    composeOptions.composeOptions.push(`${projectName}_devcontainer`);
+    console.log("projectDir: ", projectDir);
+    if (fs_1.default.existsSync(projectName)) {
+        let overwrite = (0, utils_1.ask)(`${projectName} exists do you want overwrite? [y/n] `);
+        if (!overwrite) {
+            console.error("Exiting without creating the project");
+            process.exit(0);
+        }
+        fs_1.default.rmSync(projectName, { recursive: true, force: true });
+    }
+    if (!options.directory) {
+        const git = (0, simple_git_1.default)();
+        const REPO = `${process.env.GITHUB_REPO_URL}`;
+        // clone godspeedsystems/godspeed-scaffolding repo
+        await git
+            .clone(REPO, projectName, {
+            "--branch": `${process.env.GITHUB_REPO_BRANCH}`,
+        })
+            .then(() => {
+            const p = require(path_1.default.resolve(process.cwd(), `${projectName}/package.json`));
+            p.name = projectName;
+            fs_1.default.writeFileSync(`${projectName}/package.json`, JSON.stringify(p, null, 2));
+        })
+            .then(() => console.log("project created"))
+            .catch((err) => {
+            console.error(err.message);
+            process.exit(1);
+        });
+    }
+    else {
+        fs_1.default.cpSync(options.directory, projectDir, { recursive: true });
+    }
+    if (options.noexamples) {
+        glob_1.default
+            .sync(path_1.default.join(projectDir, "src/{datasources,functions,events,mappings}/*"))
+            .map((f) => {
+            fs_1.default.rmSync(f, { recursive: true, force: true });
+        });
+        // glob.sync(path.join(projectDir, 'src/{datasources,functions,events}/*')).map((f: string) => fs.unlinkSync(f));
+    }
+    try {
+        const mongodb = (0, utils_1.ask)("Do you need mongodb? [y/n] ");
+        let mongoDbName, mongoDb1Port, mongoDb2Port, mongoDb3Port;
+        if (mongodb) {
+            mongoDbName =
+                (0, utils_1.prompt)("Please enter name of the mongo database [default: test]") ||
+                    "test";
+            mongoDb1Port = Number((0, utils_1.prompt)("Please enter host port for mongodb1 [default: 27017] ") || 27017);
+            mongoDb2Port = Number((0, utils_1.prompt)("Please enter host port for mongodb2 [default: 27018] ") || 27018);
+            mongoDb3Port = Number((0, utils_1.prompt)("Please enter host port for mongodb3 [default: 27019] ") || 27019);
+        }
+        else {
+            try {
+                fs_1.default.rmSync(path_1.default.join(projectDir, "src/datasources/mongo.prisma"));
+                fs_1.default.rmSync(path_1.default.join(projectDir, "src/functions/com/biz/ds/cross_db_join.yaml"));
+                fs_1.default.rmSync(path_1.default.join(projectDir, "src/events/cross_db_join.yaml"));
+            }
+            catch (ex) { }
+        }
+        const postgresql = (0, utils_1.ask)("Do you need postgresdb? [y/n] ");
+        let postgresDbName, postgresDbPort;
+        if (postgresql) {
+            postgresDbName =
+                (0, utils_1.prompt)("Please enter name of the postgres database [default: test] ") ||
+                    "test";
+            postgresDbPort = Number((0, utils_1.prompt)("Please enter host port for postgres [default: 5432] ") || 5432);
+        }
+        else {
+            try {
+                fs_1.default.rmSync(path_1.default.join(projectDir, "src/datasources/postgres.prisma"));
+                fs_1.default.rmSync(path_1.default.join(projectDir, "src/functions/com/biz/ds/cross_db_join.yaml"));
+                fs_1.default.rmSync(path_1.default.join(projectDir, "src/events/cross_db_join.yaml"));
+            }
+            catch (ex) { }
+        }
+        if (!mongodb && !postgresql) {
+            try {
+                fs_1.default.rmSync(path_1.default.join(projectDir, "src/functions/com/biz/ds/create_user_then_show_all.yaml"));
+                fs_1.default.rmSync(path_1.default.join(projectDir, "src/events/create_user_then_show_all.yaml"));
+            }
+            catch (ex) { }
+        }
+        const kafka = (0, utils_1.ask)("Do you need kafka? [y/n] ");
+        let kafkaPort, zookeeperPort;
+        if (kafka) {
+            kafkaPort = Number((0, utils_1.prompt)("Please enter host port for kafka [default: 9092] ") || 9092);
+            zookeeperPort = Number((0, utils_1.prompt)("Please enter host port for zookeeper [default: 2181] ") || 2181);
+        }
+        else {
+            try {
+                fs_1.default.rmSync(path_1.default.join(projectName, "src/datasources/kafka1.yaml"));
+                fs_1.default.rmSync(path_1.default.join(projectName, "src/events/publish_kafka.yaml"));
+                fs_1.default.rmSync(path_1.default.join(projectName, "src/functions/com/jfs/publish_kafka.yaml"));
+            }
+            catch (ex) { }
+        }
+        const elasticsearch = (0, utils_1.ask)("Do you need elastisearch? [y/n] ");
+        let elasticsearchPort;
+        if (elasticsearch) {
+            elasticsearchPort = Number((0, utils_1.prompt)("Please enter host port for elasticsearch [default: 9200] ") ||
+                9200);
+        }
+        else {
+            try {
+                fs_1.default.rmSync(path_1.default.join(projectDir, "src/datasources/eg_config/"), {
+                    recursive: true,
+                });
+                fs_1.default.rmSync(path_1.default.join(projectDir, "src/datasources/elasticgraph.yaml"));
+                fs_1.default.rmSync(path_1.default.join(projectDir, "src/functions/com/eg/eg_create.yaml"));
+                fs_1.default.rmSync(path_1.default.join(projectDir, "src/functions/com/eg/eg_search.yaml"));
+                fs_1.default.rmSync(path_1.default.join(projectDir, "src/events/eg_create.yaml"));
+                fs_1.default.rmSync(path_1.default.join(projectDir, "src/events/eg_search.yaml"));
+            }
+            catch (ex) { }
+        }
+        const redis = (0, utils_1.ask)("Do you need redis? [y/n] ");
+        let redisPort;
+        if (redis) {
+            redisPort = Number((0, utils_1.prompt)("Please enter host port for redis [default: 6379] ") || 6379);
+        }
+        const svcPort = Number((0, utils_1.prompt)("Please enter host port on which you want to run your service [default: 3000] ") || 3000);
+        // Fetching UID information
+        let userUID = (0, utils_1.userID)();
+        console.log("User ID is", userUID);
+        // Ask user about release version information of gs_service and change version in Dockerfile
+        console.log("Fetching release version information...");
+        const versions = await axios_1.default.get(`${process.env.DOCKER_REGISTRY_TAGS_VERSION_URL}`);
+        const availableVersions = versions.data.results
+            .map((s) => s.name)
+            .join("\n");
+        console.log(`Please select release version of gs-node-service(Godspeed Framework) from the available list:\n${availableVersions}`);
+        const gsServiceVersion = (0, utils_1.prompt)("Enter your version [default: latest] ") || "latest";
+        console.log(`Selected version ${gsServiceVersion}`);
+        // generate porject level Dockerfile from template available at `${projectDir}/Dockerfile.ejs`
+        (0, utils_1.generateFileFromTemplate)(path_1.default.resolve(projectDir, "Dockerfile.ejs"), path_1.default.resolve(projectDir, "Dockerfile"), {
+            dockerRegistry: process.env.DOCKER_REGISTRY,
+            dockerPackageName: process.env.DOCKER_PACKAGE_NAME,
+            tag: gsServiceVersion,
+        });
+        // generate .devcontainer level Dockerfile from template available at `${projectDir}/.devcontainer/Dockerfile.ejs`
+        (0, utils_1.generateFileFromTemplate)(path_1.default.resolve(projectDir, ".devcontainer", "Dockerfile.ejs"), path_1.default.resolve(projectDir, ".devcontainer", "Dockerfile"), {
+            dockerRegistry: process.env.DOCKER_REGISTRY,
+            dockerPackageName: process.env.DOCKER_PACKAGE_NAME,
+            tag: gsServiceVersion,
+        });
+        // generate .devcontainer config from template
+        (0, utils_1.generateFileFromTemplate)(path_1.default.resolve(devcontainerDir, "devcontainer.json.ejs"), path_1.default.resolve(devcontainerDir, "devcontainer.json"), { projectName, svcPort });
+        // generate docker-compose.yml from template
+        (0, utils_1.generateFileFromTemplate)(path_1.default.resolve(devcontainerDir, "docker-compose.yml.ejs"), path_1.default.resolve(devcontainerDir, "docker-compose.yml"), {
+            projectName,
+            mongodb,
+            mongoDbName,
+            postgresql,
+            postgresDbName,
+            kafka,
+            elasticsearch,
+            redis,
+            userUID,
+            svcPort,
+            elasticsearchPort,
+            postgresDbPort,
+            zookeeperPort,
+            kafkaPort,
+            redisPort,
+            mongoDb1Port,
+            mongoDb2Port,
+            mongoDb3Port,
+        });
+        // generate mogodb init script
+        (0, utils_1.generateFileFromTemplate)(path_1.default.resolve(devcontainerDir, "scripts/mongodb_rs_init.sh.ejs"), path_1.default.resolve(devcontainerDir, "scripts/mongodb_rs_init.sh"), { projectName, mongoDbName });
+        await (0, replace_in_file_1.replaceInFile)({
+            files: devcontainerDir + "/scripts/*",
+            from: /\r\n/g,
+            to: "\n",
+        });
+        // docker compose -p <projectname_devcontainer> down -v --remove-orphans
+        await docker_compose_1.default
+            .down({
+            ...composeOptions,
+            commandOptions: ["--remove-orphans", "-v"],
+        })
+            .then(() => {
+            console.log('"docker compose down" done');
+        }, (err) => {
+            //console.log('Error in "docker compose down":', err.message);
+        });
+        // // docker kill `docker ps -q`
+        // await spawnSync('docker kill `docker ps -q`')
+        console.log("Preparing Containers...");
+        await (0, prepareContainers_1.default)(projectName, gsServiceVersion, devcontainerDir, composeOptions, mongodb, postgresql);
+        fs_1.default.writeFileSync(`${projectName}/.godspeed`, JSON.stringify({
+            projectName,
+            mongodb,
+            mongoDbName,
+            postgresql,
+            postgresDbName,
+            kafka,
+            elasticsearch,
+            redis,
+            svcPort,
+            elasticsearchPort,
+            postgresDbPort,
+            zookeeperPort,
+            kafkaPort,
+            redisPort,
+            mongoDb1Port,
+            mongoDb2Port,
+            mongoDb3Port,
+        }));
+        console.log("\n", `godspeed create ${projectName} is done.`);
+    }
+    catch (ex) {
+        console.error(ex.message);
+        console.log("\n", `godspeed create ${projectName} is failed cleaning up...`);
+        fs_1.default.rmSync(projectName, { recursive: true, force: true });
+    }
+}
+exports.default = default_1;
+//# sourceMappingURL=create.js.map

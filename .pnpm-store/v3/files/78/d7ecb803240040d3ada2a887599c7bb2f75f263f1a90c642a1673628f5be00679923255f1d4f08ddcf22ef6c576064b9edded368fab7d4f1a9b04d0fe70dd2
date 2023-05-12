@@ -1,0 +1,73 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const path_1 = __importDefault(require("path"));
+const fs_1 = __importDefault(require("fs"));
+const interactiveMode_1 = __importDefault(require("../../utils/interactiveMode"));
+/**
+ * options = {
+ *  --from-template: "path or git repo of template",
+ *  --with-example: "wether to copy examples or not",
+ *  --dry-run: "should dry run the process"
+ * }
+ * */
+const validateAndCreateProjectDirectory = async (projectDirPath) => {
+    try {
+        if (fs_1.default.existsSync(projectDirPath)) {
+            if (fs_1.default.existsSync(path_1.default.resolve(projectDirPath, ".godspeed"))) {
+                console.log(`${projectDirPath} is already a godspeed project, Do you want to update?`);
+            }
+            else {
+                console.log(`${projectDirPath} already exists. Do you want to overwite?`);
+                // ask user
+                if ("yes") {
+                    console.log(`Creating godspeed project at ${projectDirPath}`);
+                }
+                else {
+                    console.log("Existing the project creatin process.");
+                }
+            }
+        }
+        // create project directory
+    }
+    catch (error) { }
+};
+const cloneAndProcess = async () => {
+    return {};
+};
+const fetchTemplate = async (projectTemplate = "default") => {
+    return true;
+};
+async function create(projectName, options) {
+    const projectDirPath = path_1.default.resolve(process.cwd(), projectName);
+    await validateAndCreateProjectDirectory(projectDirPath);
+    let godspeedOptions;
+    if (options.projectTemplate) {
+        godspeedOptions = await cloneAndProcess();
+    }
+    else {
+        // if there is no --from-template=<projectTemplate>, that's the interactive mode
+        await (0, interactiveMode_1.default)();
+    }
+    // clone the default template, If no template is selected.
+    await fetchTemplate(options.projectTemplate);
+    // by this time we have all things required to spin up the service and create project
+    // let's start the generation process
+    if (options.dryRun) {
+        // show all the steps
+    }
+    else {
+        // steps to create the project
+        // clone the default OR provided template directory
+        // STEP1: generate .devcontainer
+        // STEP2: generate Docker file
+        // STEP3: generate docker-compose.yml
+        // STEP4: generate scripts
+        // STEP5: copy examples
+        // STEP6: docker compose down and prepare containers
+    }
+}
+exports.default = create;
+//# sourceMappingURL=index.js.map

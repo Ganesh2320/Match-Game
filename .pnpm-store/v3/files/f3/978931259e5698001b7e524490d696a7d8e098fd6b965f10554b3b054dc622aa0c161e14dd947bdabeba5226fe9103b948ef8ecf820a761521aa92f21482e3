@@ -1,0 +1,2 @@
+import { PlainObject } from "../common";
+export default function (projectName: string, gsServiceVersion: string, devcontainerDir: string, composeOptions: PlainObject, mongodb: boolean, postgresql: boolean): Promise<void>;

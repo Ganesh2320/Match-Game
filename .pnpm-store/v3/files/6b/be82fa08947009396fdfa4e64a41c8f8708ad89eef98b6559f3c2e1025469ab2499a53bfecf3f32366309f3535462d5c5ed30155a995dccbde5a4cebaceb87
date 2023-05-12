@@ -1,0 +1,2 @@
+import { PlainObject } from "../common";
+export default function (projectName: string, options: any, composeOptions: PlainObject): Promise<void>;
